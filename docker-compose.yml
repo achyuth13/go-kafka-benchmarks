@@ -1,0 +1,46 @@
+version: "3.7"
+
+services:
+  zookeeper:
+    restart: always
+    image: docker.io/bitnami/zookeeper:3.8
+    ports:
+      - "2181:2181"
+    volumes:
+      - "zookeeper-data:/bitnami"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes  # Allow anonymous login if required for testing
+    networks:
+      - kafka-net
+
+  kafka:
+    restart: always
+    image: docker.io/bitnami/kafka:3.3
+    ports:
+      - "9092:9092"  # Client-facing Kafka port
+      - "9093:9093"  # External port for connections outside Docker
+    volumes:
+      - "kafka-data:/bitnami"
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_LISTENER_SECURITY_PROTOCOL=PLAINTEXT
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - KAFKA_LISTENER_NAMES=PLAINTEXT
+      - KAFKA_LISTENER_PORT=9092
+      - KAFKA_LISTENER_INTER_BROKER_PROTOCOL=PLAINTEXT
+      - KAFKA_CREATE_TOPICS=segmentio-topic
+    depends_on:
+      - zookeeper
+    networks:
+      - kafka-net
+
+volumes:
+  kafka-data:
+  zookeeper-data:
+
+networks:
+  kafka-net:
+    driver: bridge
