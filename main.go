@@ -2,44 +2,15 @@ package main
 
 import (
 	"fmt"
+	"go-kafka/config"
 	"go-kafka/producers"
 	"log"
-	"os"
+	"net/http"
+	_ "net/http/pprof"
 	"time"
-
-	"gopkg.in/yaml.v2"
 )
 
-type Config struct {
-	Kafka struct {
-		Brokers        []string `yaml:"brokers"`
-		SegmentioTopic string   `yaml:"segmentiotopic"`
-		ConfluentTopic string   `yaml:"confluenttopic"`
-	} `yaml:"kafka"`
-}
-
-func loadConfig() (*Config, error) {
-	file, err := os.Open("config.yaml")
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	decoder := yaml.NewDecoder(file)
-	config := Config{}
-	err = decoder.Decode(&config)
-	return &config, err
-}
-
-func main() {
-	config, err := loadConfig()
-	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
-	}
-
-	// Initialize both producers
-	segmentioProducer := producers.NewSegmentioProducer(config.Kafka.Brokers, config.Kafka.SegmentioTopic)
-	defer segmentioProducer.Close()
-
+func profileConfluentProducer(config *config.Config) {
 	confluentProducer, err := producers.NewConfluentProducer(config.Kafka.Brokers[0], config.Kafka.ConfluentTopic)
 	if err != nil {
 		log.Fatalf("Error initializing Confluent producer: %v", err)
@@ -48,18 +19,45 @@ func main() {
 
 	message := "Benchmarking message"
 	start := time.Now()
-	for i := 0; i < 1000; i++ {
-		if err := segmentioProducer.Produce(message); err != nil {
-			log.Printf("Segmentio producer error: %v", err)
-		}
-	}
-	fmt.Printf("Segmentio Producer Time Taken: %v\n", time.Since(start))
-
-	start = time.Now()
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 1; i++ {
 		if err := confluentProducer.Produce(message); err != nil {
 			log.Printf("Confluent producer error: %v", err)
 		}
 	}
 	fmt.Printf("Confluent Producer Time Taken: %v\n", time.Since(start))
+}
+
+func profileSegmentioProducer(config *config.Config) {
+	segmentioProducer := producers.NewSegmentioProducer(config.Kafka.Brokers, config.Kafka.SegmentioTopic)
+	defer segmentioProducer.Close()
+
+	message := "Benchmarking message"
+	start := time.Now()
+	for i := 0; i < 1; i++ {
+		if err := segmentioProducer.Produce(message); err != nil {
+			log.Printf("Segmentio producer error: %v", err)
+		}
+	}
+	fmt.Printf("Segmentio Producer Time Taken: %v\n", time.Since(start))
+}
+
+func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil)) // Starts the pprof server
+	}()
+
+	config, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
+
+	// First, profile Confluent producer
+	fmt.Println("Starting Confluent producer profiling...")
+	profileConfluentProducer(config)
+
+	// Then, profile Segmentio producer
+	fmt.Println("Starting Segmentio producer profiling...")
+	profileSegmentioProducer(config)
+
+	select {}
 }
